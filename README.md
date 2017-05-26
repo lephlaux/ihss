@@ -1,2 +1,1 @@
-# ihss
-Inexact hierarchical scale separation
+# Inexact hierarchical scale separation
