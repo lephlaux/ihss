@@ -1,0 +1,3 @@
+- Use struct for optional input parameters.
+- Pass information (number of iterations, etc.) to output arguments.
+- Use flag for visualization. 
