@@ -1,6 +1,6 @@
 %% Inexact hierarchical scale separation.
 %
-% Type 'publish('ihss.m')' to show formated documentation.
+% Type |publish('ihss.m')| to show formated documentation.
 %
 % This MATLAB implementation of IHSS is not performance-optimized and 
 % should instead provide an easy way to modify the algorithm for future
@@ -22,22 +22,27 @@
 % Contact: florian.frank@rice.edu
 %
 %% Input arguments
-% * |A|       - System matrix of size |[Nel*Nloc, Nel*Nloc]|.
-% * |B|       - System right-hand side of size |[Nel*Nloc, 1]|.
-% * |X0|      - Initial guess of size |[Nel*Nloc, 1]|.
-% * |Nel|     - Number of elements.
-% * |Nloc|    - Number of local degrees of freedom (assumed to be equal on every element).
-% * |idx_bar| - Indices of |X| that correspond to the coarse-scale solution, vector of size |[Nel]|.
-% * |idx_hat| - Indices of |X| that correspond to the fine-scale solution, vector of size |[Nel*(Nloc-1)]|.
+% # |A|       - System matrix of size |[Nel*Nloc, Nel*Nloc]|.
+% # |B|       - System right-hand side of size |[Nel*Nloc, 1]|.
+% # |X0|      - Initial guess of size |[Nel*Nloc, 1]|.
+% # |Nel|     - Number of elements.
+% # |Nloc|    - Number of local degrees of freedom (assumed to be equal on every element).
+% # |idx_bar| - Indices of |X| that correspond to the coarse-scale solution, vector of size |[Nel]|.
+% # |idx_hat| - Indices of |X| that correspond to the fine-scale solution, vector of size |[Nel*(Nloc-1)]|.
 %
 %% Optional input arguments
-% * |eta|                 - Relative tolerance for the global residual (default: |1E-6|).
-% * |nu|                  - Number of fine-scale solves per HSS cycle (default: 8).
-% * |m_anderson|          - Sequence length within Anderson acceleration (default: 3).
-% * |max_HSS_iter|        - Maximum allowed number of HSS cycle (default: |Nel|).
-% * |coarse_rel_tol_init| - Relative tolerance for the coarse-scale solver in the first HSS cycle (default: 0.1).
+% Optional arguments are specified by an 8th input argument of type |struct|
+% (i.e. they have no order).
+% If one of the below fields are not specified, the default value is used.
+%
+% * |opt.eta|                 - Relative tolerance for the global residual (default: |1E-6|).
+% * |opt.nu|                  - Number of fine-scale solves per HSS cycle (default: 8).
+% * |opt.m_anderson|          - Sequence length within Anderson acceleration (default: 3).
+% * |opt.max_HSS_iter|        - Maximum allowed number of HSS cycle (default: |Nel|).
+% * |opt.coarse_rel_tol_init| - Relative tolerance for the coarse-scale solver in the first HSS cycle (default: 0.1).
+% * |opt.is_print|            - Print the global residual norms for every HSS cycle (default: true).
 function X = ihss(A, B, X0, Nel, Nloc, idx_bar, idx_hat, ...               % Mandatory arguments.
-                  eta, nu, m_anderson, max_HSS_iter, coarse_rel_tol_init)  % Arguments that have a default value.
+                  opt)                                                     % Arguments that have a default value.
 
 %% Assertions for mandatory input arguments.
 assert(Nel >= 1)
@@ -47,20 +52,35 @@ assert(isequal(size(B),  [Nel*Nloc, 1]))
 assert(isequal(size(X0), [Nel*Nloc, 1]))
 assert(length(idx_bar) == Nel)
 assert(length(idx_hat) == Nel*(Nloc - 1))
+assert(nargin >= 7, 'ihss has seven mandatory input arguments, see ''doc ihss''.')
 
-%% Setting unspecified optional input parameters.
-if nargin < 7,  error('ihss has seven mandatory input arguments, see ''doc ihss''.'); end
-if nargin < 8,  eta = 1E-6; end
-if nargin < 9,  nu  = 8; end
-if nargin < 10, m_anderson = 3; end
-if nargin < 11, max_HSS_iter = Nel; end
-if nargin < 12, coarse_rel_tol_init = 0.1; end
+%% Setting unspecified optional input parameters (i.e. completing struct 'opt').
+if nargin == 8
+  assert(isstruct(opt), 'The argument for optional parameters must be a struct.')
+  if ~isfield(opt, 'eta')
+    opt.eta = 1E-6;
+  end
+  if ~isfield(opt, 'nu')
+    opt.nu = 8;
+  end
+  if ~isfield(opt, 'm_anderson')
+    opt.m_anderson = 3;
+  end
+  if ~isfield(opt, 'max_HSS_iter')
+    opt.max_HSS_iter = Nel;
+  end
+  if ~isfield(opt, 'coarse_rel_tol_init')
+    opt.coarse_rel_tol_init = 0.1;
+  end
+  if ~isfield(opt, 'is_print')
+    opt.is_print = true;
+end
 
 %% Assertions for optional arguments.
-assert(coarse_rel_tol_init > 0)
-assert(eta > 0)
-assert(nu >= 1)
-assert(m_anderson >= 0)
+assert(opt.coarse_rel_tol_init > 0)
+assert(opt.eta > 0)
+assert(opt.nu >= 1)
+assert(opt.m_anderson >= 0)
 
 %% Extracting the system blocks (should be done in-situ in a C++ implementation).
 A_bar = A(idx_bar, idx_bar);                                               % Extraction of submatrices.
@@ -81,19 +101,23 @@ k = 0;
 global_res_init = sqrt(norm(A_bar*X_bar_iter + C_bar*X_hat_old - B_bar)^2 + ...
                        norm(C_hat*X_bar_iter + A_hat*X_hat_old - B_hat)^2);
 global_res_cur = global_res_init;
-fprintf('Residual %f\n', global_res_cur);
+if opt.is_print
+  fprintf('Residual %f\n', global_res_cur);
+end
 global_res_norm_list = [];                                                 % Arrays to store the residual norms to plot them later.
 coarse_res_norm_list = [];
 fine_res_norm_list   = [];
 
-while (global_res_cur/global_res_init >= eta)                              % Check global relative residual norm.
-  if k > max_HSS_iter                                                      % Check if we exceed the number of allowed HSS cycles.
+while (global_res_cur/global_res_init >= opt.eta)                              % Check global relative residual norm.
+  if k > opt.max_HSS_iter                                                      % Check if we exceed the number of allowed HSS cycles.
     error('IHSS did not converge within the allowed number of cycles.')
   end
   
   %% Step 2.1: Initialization.
   k = k + 1;
-  fprintf('Iteration number: %d.\n', k);
+  if opt.is_print
+    fprintf('HSS cycle number %d.\n', k);
+  end
 
   %% Step 2.6: Determine a tolerance for the coarse-scale solver.
   % Given A*x = b, MATLAB gmres provides only a stopping criterion for a
@@ -101,7 +125,7 @@ while (global_res_cur/global_res_init >= eta)                              % Che
   % we need to convert the absolute tolerance for the coarse-scale solver 
   % to the above one.
   if k == 1 
-    coarse_rel_tol = coarse_rel_tol_init;
+    coarse_rel_tol = opt.coarse_rel_tol_init;
   else
     coarse_rel_tol = fine_res_norm/norm(B_bar - C_bar*X_hat_old);
   end
@@ -113,7 +137,9 @@ while (global_res_cur/global_res_init >= eta)                              % Che
   [X_bar_iter, flag, relres, numiter] = ...
     gmres(A_bar, B_bar - C_bar*X_hat_old, gmres_restart, coarse_rel_tol, 1000, [], [], X_bar_iter);
   if (flag == 0)
-    fprintf('  GMRES(%d) iterations: %d (rel. res.: %e).\n', gmres_restart, numiter(2), relres);
+    if opt.is_print
+      fprintf('  GMRES(%d) iterations: %d (rel. res.: %e).\n', gmres_restart, numiter(2), relres);
+    end
   else
     error('Coarse-scale solver diverged.')
   end
@@ -135,7 +161,7 @@ while (global_res_cur/global_res_init >= eta)                              % Che
   g_fun = @(X_hat_old) A_hat_diag\(d - A_hat_off*X_hat_old);               %#ok<NASGU>
   atol  = -inf; rtol = -inf;                                               %#ok<NASGU>
   % We use 'evalc' to suppress the output of the Anderson acceleration function.
-  [~, X_hat_new]  = evalc('AndAcc(g_fun, X_hat_old, m_anderson, nu, atol, rtol);'); 
+  [~, X_hat_new]  = evalc('AndAcc(g_fun, X_hat_old, opt.m_anderson, opt.nu, atol, rtol);'); 
   coarse_res_norm = norm(A_bar*X_bar_iter + C_bar*X_hat_new - B_bar);
   fine_res_norm   = norm(C_hat*X_bar_iter + A_hat*X_hat_new - B_hat);
   global_res_cur  = sqrt(coarse_res_norm^2 + fine_res_norm^2);
@@ -143,8 +169,10 @@ while (global_res_cur/global_res_init >= eta)                              % Che
   global_res_norm_list = [global_res_norm_list, global_res_cur];           %#ok<AGROW>
   coarse_res_norm_list = [coarse_res_norm_list, coarse_res_norm];          %#ok<AGROW>
   fine_res_norm_list   = [fine_res_norm_list,   fine_res_norm];            %#ok<AGROW>
-  fprintf('  Abs. residual norm: %.3e\n', global_res_cur);
-  fprintf('  Rel. residual norm: %.3e\n', global_res_cur/global_res_init);
+  if opt.is_print
+    fprintf('  Abs. residual norm: %.3e\n', global_res_cur);
+    fprintf('  Rel. residual norm: %.3e\n', global_res_cur/global_res_init);
+  end
   X_hat_old = X_hat_new;
 end % while
 
