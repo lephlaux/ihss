@@ -5,7 +5,7 @@
 We propose a modified HSS scheme (*"inexact HSS", "IHSS"*) that exploits the highly parallel fine-scale solver more extensively and only approximates the coarse-scale solution in every iteration thus resulting in a significant speedup. The tolerance of the coarse-scale solver is adapted in every IHSS cycle, controlled by the residual norm of the fine-scale system. Anderson acceleration is employed in the repeated solving of the fine-scale system to stabilize the scheme.
 
 ## Third party code
-The solver function `ihss.m` requires an implementation of the Anderson acceleration. We recommend Homer Walker's `AndAcc.m`, which can be found [here](https://users.wpi.edu/~walker/Papers/anderson_accn_algs_imps.pdf). 
+IHSS requires Anderson acceleration for the repeated solving of the fine-scale problems within one HSS cycle.  The implementation `AndAcc.m`, which can be found [here](https://users.wpi.edu/~walker/Papers/anderson_accn_algs_imps.pdf), was uploaded into our repository by kind permission of the author Homer F. Walker.
 
 ## Documentation
 Run `publish('ihss.m')` in the MATLAB terminal.
