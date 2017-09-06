@@ -41,6 +41,7 @@
 % * |opt.max_HSS_iter|        - Maximum allowed number of HSS cycle (default: |Nel|).
 % * |opt.coarse_rel_tol_init| - Relative tolerance for the coarse-scale solver in the first HSS cycle (default: 0.1).
 % * |opt.is_print|            - Print the global residual norms for every HSS cycle (default: true).
+% * |opt.is_plot|             - Plot the residual norms against iteration levels (default: true).
 function X = ihss(A, B, X0, Nel, Nloc, idx_bar, idx_hat, ...               % Mandatory arguments.
                   opt)                                                     % Arguments that have a default value.
 
@@ -74,6 +75,10 @@ if nargin == 8
   end
   if ~isfield(opt, 'is_print')
     opt.is_print = true;
+  end
+  if ~isfield(opt, 'is_plot')
+    opt.is_plot = true;
+  end
 end
 
 %% Assertions for optional arguments.
@@ -82,7 +87,11 @@ assert(opt.eta > 0)
 assert(opt.nu >= 1)
 assert(opt.m_anderson >= 0)
 
-%% Extracting the system blocks (should be done in-situ in a C++ implementation).
+%% Extracting the system blocks.
+% In performance-relevant implementations, this should be avoided by having
+% the data ready in the desired format, i.e., instead of assembling a global
+% system, the coarse-scale system should be assembled in a distributed fashion
+% and the fine-scale systems 
 A_bar = A(idx_bar, idx_bar);                                               % Extraction of submatrices.
 C_bar = A(idx_bar, idx_hat);
 C_hat = A(idx_hat, idx_bar);
@@ -177,13 +186,17 @@ while (global_res_cur/global_res_init >= opt.eta)                              %
 end % while
 
 % Plot the residual norms for the fine-scale, coarse-scale, and original system.
-semilogy(global_res_norm_list, 'b');
-hold on,  box on,  grid on
-semilogy(coarse_res_norm_list, 'g--');
-semilogy(fine_res_norm_list, 'r--');
-legend('global residual norm', 'coarse-scale residual norm', 'fine-scale residual norm');
+if opt.is_plot
+  semilogy(global_res_norm_list, 'b');
+  hold on,  box on,  grid on
+  semilogy(coarse_res_norm_list, 'g--');
+  semilogy(fine_res_norm_list, 'r--');
+  legend('global residual norm', 'coarse-scale residual norm', 'fine-scale residual norm');
+end 
 
 %% Reordering of the solution vector X.
+% In performance-relevant implementations, this should be avoided by having
+% the data ready in the desired format.
 X = zeros(Nel*Nloc, 1);
 X(idx_bar) = X_bar_iter;
 X(idx_hat) = X_hat_new;
