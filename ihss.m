@@ -89,9 +89,7 @@ assert(opt.m_anderson >= 0)
 
 %% Extracting the system blocks.
 % In performance-relevant implementations, this should be avoided by having
-% the data ready in the desired format, i.e., instead of assembling a global
-% system, the coarse-scale system should be assembled in a distributed fashion
-% and the fine-scale systems 
+% the data ready in the desired format.
 A_bar = A(idx_bar, idx_bar);                                               % Extraction of submatrices.
 C_bar = A(idx_bar, idx_hat);
 C_hat = A(idx_hat, idx_bar);
@@ -117,8 +115,8 @@ global_res_norm_list = [];                                                 % Arr
 coarse_res_norm_list = [];
 fine_res_norm_list   = [];
 
-while (global_res_cur/global_res_init >= opt.eta)                              % Check global relative residual norm.
-  if k > opt.max_HSS_iter                                                      % Check if we exceed the number of allowed HSS cycles.
+while (global_res_cur/global_res_init >= opt.eta)                          % Check global relative residual norm.
+  if k > opt.max_HSS_iter                                                  % Check if we exceed the number of allowed HSS cycles.
     error('IHSS did not converge within the allowed number of cycles.')
   end
   
