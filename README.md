@@ -8,7 +8,7 @@ We propose a modified HSS scheme [1] (*"inexact HSS", "IHSS"*) that exploits the
 IHSS requires Anderson acceleration for the repeated solving of the fine-scale problems within one HSS cycle.  The implementation `AndAcc.m` [2,3] was uploaded into our repository by kind permission of the author Homer F. Walker.
 
 ## Documentation
-Run `publish('ihss.m')` in the MATLAB terminal.
+Run `p = publish('ihss.m', struct('evalCode', false));` and `open(p)` in the MATLAB terminal.
 
 ## Authors
 Florian Frank and Christopher Thiele.
