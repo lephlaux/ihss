@@ -1,6 +1,11 @@
 %% Inexact hierarchical scale separation.
 %
-% Type |publish('ihss.m')| to show formated documentation.
+% Execute 
+%
+%   p = publish('ihss.m', struct('evalCode', false)); 
+%   open(p)
+% 
+% to show formated documentation.
 %
 % This MATLAB implementation of IHSS is not performance-optimized and 
 % should instead provide an easy way to modify the algorithm for future
@@ -8,7 +13,7 @@
 % 
 % The function 
 %
-%   'ihss(A, B, X0, Nel, Nloc, idx_bar, idx_hat)'
+%   ihss(A, B, X0, Nel, Nloc, idx_bar, idx_hat, opt)
 % 
 % approximates the solution $\vec{x}^\ast$ of a linear system $\mathbf{A}\vec{x} = \vec{b}$
 % stemming from a discontinuous Galerkin method using modal basis functions such that
@@ -16,10 +21,19 @@
 % $$\frac{\|\mathbf{A}\vec{x}^\ast - \vec{b}\|}{\|\mathbf{A}\vec{x}_0 -\vec{b}\|} < \eta$$
 %
 % where $\vec{x}_0$ is an initial guess.  For details, see
-% _Thiele, Araya-Polo, Alpak, Riviere, Frank - 2017 - Inexact hierarchical scale separation: 
-% A two-scale approach for linear systems from discontinuous Galerkin discretizations_.
 %
-% Contact: florian.frank@rice.edu
+% <html>
+%   <p style="border:2px; border-style:solid; border-color:#000000; padding: 1em;">
+%     C Thiele, M Araya-Polo, FO Alpak, B Rivière, F Frank<br>
+%     Inexact hierarchical scale separation: A two-scale approach for linear
+%     systems from discontinuous Galerkin discretizations<br>
+%     Computers and Mathematics with Applications, 74(8), 1769–1778, 2017<br>
+%     <a href="http://dx.doi.org/10.1016/j.camwa.2017.06.025">DOI: 10.1016/j.camwa.2017.06.025</a>
+%     </p>
+% </html>
+%
+% Authors: Florian Frank and Christopher Thiele.
+% Contact: florian.frank@fau.de
 %
 %% Input arguments
 % # |A|       - System matrix of size |[Nel*Nloc, Nel*Nloc]|.
@@ -38,7 +52,9 @@
 % * |opt.eta|                 - Relative tolerance for the global residual (default: |1E-6|).
 % * |opt.nu|                  - Number of fine-scale solves per HSS cycle (default: 8).
 % * |opt.m_anderson|          - Sequence length within Anderson acceleration (default: 3).
-% * |opt.max_HSS_iter|        - Maximum allowed number of HSS cycle (default: |Nel|).
+% * |opt.max_HSS_cycles|      - Maximum allowed number of HSS cycle (default: |Nel|).
+% * |opt.CSS_type|            - Name of the coarse-scale solver (|'gmres'| (default), |'cg'|, |'bicgstab'|).
+% * |opt.max_CSS_iter|        - Maximum allowed number of coarse-scale solver iterations (default: |Nel|).
 % * |opt.coarse_rel_tol_init| - Relative tolerance for the coarse-scale solver in the first HSS cycle (default: 0.1).
 % * |opt.is_print|            - Print the global residual norms for every HSS cycle (default: true).
 % * |opt.is_plot|             - Plot the residual norms against iteration levels (default: true).
@@ -53,7 +69,7 @@ assert(isequal(size(B),  [Nel*Nloc, 1]))
 assert(isequal(size(X0), [Nel*Nloc, 1]))
 assert(length(idx_bar) == Nel)
 assert(length(idx_hat) == Nel*(Nloc - 1))
-assert(nargin >= 7, 'ihss has seven mandatory input arguments, see ''doc ihss''.')
+assert(nargin == 7 || nargin == 8, 'ihss has seven mandatory and one optional input argument, see ''doc ihss''.')
 
 %% Setting unspecified optional input parameters (i.e. completing struct 'opt').
 if nargin == 8
@@ -67,8 +83,14 @@ if nargin == 8
   if ~isfield(opt, 'm_anderson')
     opt.m_anderson = 3;
   end
-  if ~isfield(opt, 'max_HSS_iter')
-    opt.max_HSS_iter = Nel;
+  if ~isfield(opt, 'max_HSS_cycles')
+    opt.max_HSS_cycles = Nel;
+  end
+  if ~isfield(opt, 'CSS_type')
+    opt.CSS_type = 'gmres';
+  end
+  if ~isfield(opt, 'max_CSS_iter')
+    opt.max_CSS_iter = Nel;
   end
   if ~isfield(opt, 'coarse_rel_tol_init')
     opt.coarse_rel_tol_init = 0.1;
@@ -106,17 +128,18 @@ X_bar_iter = X0(idx_bar);
 X_hat_old  = X0(idx_hat);
 k = 0;
 global_res_init = sqrt(norm(A_bar*X_bar_iter + C_bar*X_hat_old - B_bar)^2 + ...
-                       norm(C_hat*X_bar_iter + A_hat*X_hat_old - B_hat)^2);
-global_res_cur = global_res_init;
+                       norm(C_hat*X_bar_iter + A_hat*X_hat_old - B_hat)^2);% Global residual of initial guess.
+global_res_cur = global_res_init;                                          % Current global residual.
 if opt.is_print
   fprintf('Residual %f\n', global_res_cur);
 end
+num_CSS_iter_list    = [];
 global_res_norm_list = [];                                                 % Arrays to store the residual norms to plot them later.
 coarse_res_norm_list = [];
 fine_res_norm_list   = [];
 
 while (global_res_cur/global_res_init >= opt.eta)                          % Check global relative residual norm.
-  if k > opt.max_HSS_iter                                                  % Check if we exceed the number of allowed HSS cycles.
+  if k > opt.max_HSS_cycles                                                % Check if we exceed the number of allowed HSS cycles.
     error('IHSS did not converge within the allowed number of cycles.')
   end
   
@@ -138,17 +161,31 @@ while (global_res_cur/global_res_init >= opt.eta)                          % Che
   end
   
   %% Step 2.2: Coarse system approximation.
-  % Solve the coarse scale system with (restarted) GMRES.  If solver 
-  % converges print information, otherwise terminate.
-  gmres_restart = 30;
-  [X_bar_iter, flag, relres, numiter] = ...
-    gmres(A_bar, B_bar - C_bar*X_hat_old, gmres_restart, coarse_rel_tol, 1000, [], [], X_bar_iter);
+  % Solve the coarse scale system with the coarse-scale solver (CSS).
+  % If solver converges print information, otherwise terminate.
+  switch opt.CSS_type
+    case 'gmres'
+      gmres_restart = 30;
+      [X_bar_iter, flag, relres, num_CSS_iter] = ...
+        gmres(A_bar, B_bar - C_bar*X_hat_old, gmres_restart, coarse_rel_tol, opt.max_CSS_iter, [], [], X_bar_iter);
+      num_CSS_iter = num_CSS_iter(2);
+    case 'cg'
+      [X_bar_iter, flag, relres, num_CSS_iter] = ...
+        pcg(A_bar, B_bar - C_bar*X_hat_old, coarse_rel_tol, opt.max_CSS_iter, [], [], X_bar_iter);
+    case 'bicgstab'
+      [X_bar_iter, flag, relres, num_CSS_iter] = ...
+        bicgstab(A_bar, B_bar - C_bar*X_hat_old, coarse_rel_tol, opt.max_CSS_iter, [], [], X_bar_iter);  
+    otherwise
+      error('The value for opt.CSS_type is unknown.')
+  end % switch
+  % Store number of CSS iterations for plot.
+  num_CSS_iter_list = [num_CSS_iter_list, num_CSS_iter];                   %#ok<AGROW>
   if (flag == 0)
     if opt.is_print
-      fprintf('  GMRES(%d) iterations: %d (rel. res.: %e).\n', gmres_restart, numiter(2), relres);
+      fprintf('  CSS (%s) iterations: %.1f (rel. res.: %.3e).\n', opt.CSS_type, num_CSS_iter, relres);
     end
   else
-    error('Coarse-scale solver diverged.')
+    error('CSS (%s) diverged (error flag: %d)', opt.CSS_type, d)
   end
   
   %% Steps 2.3, 2.4: Fine system approximation by Anderson acceleration.
@@ -185,11 +222,19 @@ end % while
 
 % Plot the residual norms for the fine-scale, coarse-scale, and original system.
 if opt.is_plot
-  semilogy(global_res_norm_list, 'b');
+  % Left y-axis for logarithmic residuals.
+  yyaxis left
+  semilogy(global_res_norm_list, 'k');
   hold on,  box on,  grid on
   semilogy(coarse_res_norm_list, 'g--');
   semilogy(fine_res_norm_list, 'r--');
-  legend('global residual norm', 'coarse-scale residual norm', 'fine-scale residual norm');
+  % Right axis is number of CSS iterations per HSS cycle.
+  yyaxis right
+  plot(num_CSS_iter_list)
+  ylim([0 ceil(max(num_CSS_iter_list))])
+  legend('global residual norm', 'coarse-scale residual norm', 'fine-scale residual norm', 'CSS iterations', ...
+         'Location', 'southwest')
+  xlabel('HSS cycle number')
 end 
 
 %% Reordering of the solution vector X.

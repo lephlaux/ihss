@@ -10,12 +10,15 @@ IHSS requires Anderson acceleration for the repeated solving of the fine-scale p
 ## Documentation
 Run `publish('ihss.m')` in the MATLAB terminal.
 
+## Authors
+Florian Frank and Christopher Thiele.
+
 ## Contact
 florian dot frank at rice dot edu
 
 ## References
-[1] [C Thiele, M Araya-Polo, FO Alpak, B Rivière, F Frank, Inexact hierarchical scale separation: A two-scale approach for linear systems from discontinuous Galerkin discretizations, Computers and Mathematics with Applications, 2017.](http://dx.doi.org/10.1016/j.camwa.2017.06.025)
+[1] [C Thiele, M Araya-Polo, FO Alpak, B Rivière, F Frank, Inexact hierarchical scale separation: A two-scale approach for linear systems from discontinuous Galerkin discretizations, Computers and Mathematics with Applications, 74(8), 1769–1778, 2017.](http://dx.doi.org/10.1016/j.camwa.2017.06.025)
 
 [2] [HF Walker, Anderson Acceleration: Algorithms and Implementations, 2011.](https://users.wpi.edu/~walker/Papers/anderson_accn_algs_imps.pdf)
 
-[3] [HF Walker, P Ni, Anderson Acceleration for Fixed-Point Iterations, SIAM J. Numer. Anal., 49(4), 1715–1735, 2011.](https://doi.org/10.1137/10078356X)
+[3] [HF Walker, P Ni, Anderson Acceleration for Fixed-Point Iterations, SIAM Journal on Numerical Analysis, 49(4), 1715–1735, 2011.](https://doi.org/10.1137/10078356X)
