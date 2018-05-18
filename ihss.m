@@ -185,7 +185,7 @@ while (global_res_cur/global_res_init >= opt.eta)                          % Che
       fprintf('  CSS (%s) iterations: %.1f (rel. res.: %.3e).\n', opt.CSS_type, num_CSS_iter, relres);
     end
   else
-    error('CSS (%s) diverged (error flag: %d)', opt.CSS_type, d)
+    error('CSS (%s) diverged (error flag: %d)', opt.CSS_type, flag)
   end
   
   %% Steps 2.3, 2.4: Fine system approximation by Anderson acceleration.
